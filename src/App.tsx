@@ -437,24 +437,6 @@ const roadStyle: Style = {
     },
     {
       type: 'Rule',
-      minScale: 1000,
-      symbolizers: [
-        {
-          type: 'LineSymbolizer',
-          level: 10,
-          stroke: {
-            type: 'PenStroke',
-            width: 1,
-            uom: 'PX',
-            fill: {
-              type: 'SolidFill',
-              color: '#d3d3d3',
-            }
-          }
-        },]
-    },
-    {
-      type: 'Rule',
       maxScale: 1000,
       symbolizers: [
         {
@@ -462,8 +444,9 @@ const roadStyle: Style = {
           level: 10,
           stroke: {
             type: 'PenStroke',
-            width: 6,
+            width: 4,
             uom: 'GM',
+            lineCap: 'round',
             fill: {
               type: 'SolidFill',
               color: '#d3d3d3',
@@ -473,7 +456,7 @@ const roadStyle: Style = {
           type: 'LineSymbolizer',
           uom: 'GM',
           level: 1,
-          perpendicularOffset: 3,
+          perpendicularOffset: 2,
           stroke: {
             type: 'PenStroke',
             uom: 'PX',
@@ -487,7 +470,7 @@ const roadStyle: Style = {
           type: 'LineSymbolizer',
           uom: 'GM',
           level: 1,
-          perpendicularOffset: -3,
+          perpendicularOffset: -2,
           stroke: {
             type: 'PenStroke',
             uom: 'PX',
@@ -605,7 +588,7 @@ const pathsStyle : Style = {
       symbolizers: [
         {
           type: "LineSymbolizer",
-          level: 2,
+          level: 2000,
           stroke: {
             type: "GraphicStroke",
             distance: 1,
