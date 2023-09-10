@@ -1,3 +1,5 @@
+import { Geometry } from 'geojson';
+
 declare module 'rtree' {
   // // Type definitions for rtree 1.4.0
   // Project: https://github.com/leaflet-extras/RTree
@@ -11,10 +13,10 @@ declare module 'rtree' {
     h: number;
   }
 
-  export declare class RTree {
-    insert(bounds: Rectangle, element: Object): boolean;
-    remove(area: Rectangle, element?: Object): any[];
-    geoJSON(geoJSON: any): void;
+  export class RTree<T> {
+    insert(bounds: Rectangle, element: T): boolean;
+    remove(area: Rectangle, element?: T): any[];
+    geoJSON(geoJSON: GeoJSON): void;
     bbox(arg1: any, arg2?: any, arg3?: number, arg4?: number): any[];
     search(area: Rectangle, return_node?: boolean, return_array?: any[]): any[];
     toJSON(printing?: string | number): string;
@@ -27,19 +29,11 @@ declare module 'rtree' {
   export default rtreeLib;
 }
 
-
-
-declare module "opentype.js/dist/opentype.module" {
-  export interface DrawOptions {
-  }
+declare module 'opentype.js/dist/opentype.module' {
+  export interface DrawOptions {}
 
   export class Font {
-    public getPath(
-      text: string,
-      x: number,
-      y: number,
-      fontSize: number
-    ): unknown;
+    public getPath(text: string, x: number, y: number, fontSize: number): unknown;
     public draw(
       ctx: CanvasRenderingContext2D,
       text: string,
@@ -52,7 +46,7 @@ declare module "opentype.js/dist/opentype.module" {
   export function load(url: string, then: (err: unknown, font: Font) => void);
 }
 
-declare module "jsts/org/locationtech/jts/io/GeoJSONReader" {
+declare module 'jsts/org/locationtech/jts/io/GeoJSONReader' {
   export default class GeoJSONReader {
     constructor(geometryFactory?: jsts.geom.GeometryFactory);
 
@@ -67,7 +61,7 @@ declare module "jsts/org/locationtech/jts/io/GeoJSONReader" {
   }
 }
 
-declare module "jsts/org/locationtech/jts/io/GeoJSONWriter" {
+declare module 'jsts/org/locationtech/jts/io/GeoJSONWriter' {
   export default class GeoJSONWriter {
     /**
      * Writes the GeoJSON representation of a {@link Geometry}. The
@@ -95,7 +89,7 @@ declare module "jsts/org/locationtech/jts/io/GeoJSONWriter" {
   }
 }
 
-declare module "jsts/org/locationtech/jts/operation/buffer/BufferOp" {
+declare module 'jsts/org/locationtech/jts/operation/buffer/BufferOp' {
   export default class BufferOp {
     /**
      * A number of digits of precision which leaves some computational "headroom"
@@ -136,11 +130,7 @@ declare module "jsts/org/locationtech/jts/operation/buffer/BufferOp" {
      *
      * @return {double} a scale factor for the buffer computation.
      */
-    static precisionScaleFactor(
-      g: Geometry,
-      distance: number,
-      maxPrecisionDigits: number
-    ): number;
+    static precisionScaleFactor(g: Geometry, distance: number, maxPrecisionDigits: number): number;
 
     /**
      * Computes the buffer of a geometry for a given buffer distance.
@@ -166,11 +156,7 @@ declare module "jsts/org/locationtech/jts/operation/buffer/BufferOp" {
      * @return {Geometry} the buffer of the input geometry.
      *
      */
-    static bufferOp2(
-      g: Geometry,
-      distance: number,
-      params: BufferParameters
-    ): Geometry;
+    static bufferOp2(g: Geometry, distance: number, params: BufferParameters): Geometry;
 
     /**
      * Computes the buffer for a geometry for a given buffer distance and accuracy
@@ -186,11 +172,7 @@ declare module "jsts/org/locationtech/jts/operation/buffer/BufferOp" {
      * @return {Geometry} the buffer of the input geometry.
      *
      */
-    static bufferOp3(
-      g: Geometry,
-      distance: number,
-      quadrantSegments: number
-    ): Geometry;
+    static bufferOp3(g: Geometry, distance: number, quadrantSegments: number): Geometry;
 
     /**
      * Computes the buffer for a geometry for a given buffer distance and accuracy

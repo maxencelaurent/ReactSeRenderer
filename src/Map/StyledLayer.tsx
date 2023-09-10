@@ -1,6 +1,6 @@
-import * as React from "react";
-import {MapViewCtx} from "./MapView";
-import {Style} from "../model/rule";
+import * as React from 'react';
+import { MapViewCtx } from './MapView';
+import { Style } from '../model/rule';
 
 export interface StyledLayerProps {
   visible?: boolean;
@@ -9,20 +9,18 @@ export interface StyledLayerProps {
   index: number;
 }
 
-export default function StyledLayer({layerId, style, index, visible=true}: StyledLayerProps) {
-  const {registerLayer, deleteLayer} = React.useContext(MapViewCtx);
+export default function StyledLayer({ layerId, style, index, visible = true }: StyledLayerProps) {
+  const { registerLayer, deleteLayer } = React.useContext(MapViewCtx);
 
   React.useEffect(() => {
     registerLayer(layerId, style, index, visible);
-  }, [layerId, style, index]);
+  }, [layerId, style, index, visible, registerLayer]);
 
   React.useEffect(() => {
     return () => {
       deleteLayer(layerId);
-    }
-  }, [layerId]);
+    };
+  }, [layerId, deleteLayer]);
 
-  return (<div>
-    Style {layerId}
-  </div>);
+  return <div>Style {layerId}</div>;
 }

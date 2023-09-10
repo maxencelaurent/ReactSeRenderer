@@ -1,6 +1,6 @@
-import * as React from "react";
-import {FeatureCollection} from "geojson";
-import {LayerId, MapCtx} from "./MapDefinition";
+import * as React from 'react';
+import { FeatureCollection } from 'geojson';
+import { LayerId, MapCtx } from './MapDefinition';
 
 export interface LayerDefinitionProps {
   layerId: LayerId;
@@ -10,8 +10,8 @@ export interface LayerDefinitionProps {
   dataCrs: string;
 }
 
-export default function LayerDefinition({layerId, features, dataCrs}: LayerDefinitionProps) {
-  const {registerLayer, deleteLayer} = React.useContext(MapCtx);
+export default function LayerDefinition({ layerId, features, dataCrs }: LayerDefinitionProps) {
+  const { registerLayer, deleteLayer } = React.useContext(MapCtx);
 
   React.useEffect(() => {
     registerLayer({
@@ -22,7 +22,7 @@ export default function LayerDefinition({layerId, features, dataCrs}: LayerDefin
     return () => {
       deleteLayer(layerId);
     };
-  }, [features]);
+  }, [features, layerId, dataCrs, registerLayer, deleteLayer]);
 
-  return (<></>);
+  return <></>;
 }

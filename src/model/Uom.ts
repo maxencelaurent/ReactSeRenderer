@@ -1,7 +1,7 @@
-import {toMeter} from "../geom/transform";
-import {SeRenderingContext} from "../renderer/renderer";
+import { toMeter } from '../geom/transform';
+import { SeRenderingContext } from '../renderer/renderer';
 
-export type Uom = "IN" | "MM" | "PT" | "GM" | "GFT" | "PERCENT" | "PX";
+export type Uom = 'IN' | 'MM' | 'PT' | 'GM' | 'GFT' | 'PERCENT' | 'PX';
 
 export interface WithUom {
   uom?: Uom;
@@ -14,12 +14,12 @@ export const ONE_THOUSAND = 1000;
 export const ONE_HUNDRED = 100;
 
 type UomUrn =
-  | "urn:ogc:def:uom:se::in"
-  | "urn:ogc:def:uom:se::px"
-  | "urn:ogc:def:uom:se::pt"
-  | "urn:ogc:def:uom:se::percent"
-  | "urn:ogc:def:uom:se::gm"
-  | "urn:ogc:def:uom:se::gf";
+  | 'urn:ogc:def:uom:se::in'
+  | 'urn:ogc:def:uom:se::px'
+  | 'urn:ogc:def:uom:se::pt'
+  | 'urn:ogc:def:uom:se::percent'
+  | 'urn:ogc:def:uom:se::gm'
+  | 'urn:ogc:def:uom:se::gf';
 
 ///**
 // * Build an {@code Uom} from a OGC code that represents a unit of measure.
@@ -76,52 +76,55 @@ type UomUrn =
  */
 export function toPixel(
   value: number,
-  { uom, dpi, scaleDenom }: { uom: Uom; dpi: number; scaleDenom: number },
+  { uom, dpi, scaleDenom }: Pick<SeRenderingContext, 'uom' | 'dpi' | 'scaleDenom'>,
   v100p?: number
 ): number {
-  if (uom == null || uom ==='PX') {
+  if (uom == null || uom === 'PX') {
     return value; // no uom ? => return as Pixel !
   }
 
   if (dpi <= 0) {
-    throw new Error("DPI is invalid");
+    throw new Error('DPI is invalid');
   }
 
   switch (uom) {
-    case "IN":
+    case 'IN':
       return value * dpi; // [IN] * [PX]/[IN] => [PX]
-    case "MM":
+    case 'MM':
       return (value / MM_IN_INCH) * dpi; // [MM] * [IN]/[MM] * [PX]/[IN] => [PX]
-    case "PT": // 1PT == 1/72[IN] whatever dpi is
+    case 'PT': // 1PT == 1/72[IN] whatever dpi is
       return (value / PT_IN_INCH) * dpi; // 1/72[IN] * 72 *[PX]/[IN] => [PX]
-    case "GM":
+    case 'GM':
       if (scaleDenom <= 0) {
-        throw new Error("Scale is invalid");
+        throw new Error('Scale is invalid');
       }
       return (value * ONE_THOUSAND * dpi) / (scaleDenom * MM_IN_INCH);
-    case "GFT":
+    case 'GFT':
       if (scaleDenom <= 0) {
-        throw new Error("Scale is invalid");
+        throw new Error('Scale is invalid');
       }
       return (value * IN_IN_FOOT * dpi) / scaleDenom;
-    case "PERCENT":
+    case 'PERCENT':
       return v100p != null ? (value * v100p) / ONE_HUNDRED : value;
     default:
       return value; // never
   }
 }
 
-
-export function getGroundToPixelFactor( context: SeRenderingContext,) : number {
-  return toPixel(
-    toMeter[context.groundUnit]
-    , {
-      uom: 'GM',
-      dpi: context.dpi,
-      scaleDenom: context.scaleDenom,
-    });
+export function getGroundToPixelFactor(
+  context: Pick<SeRenderingContext, 'groundUnit' | 'dpi' | 'scaleDenom'>
+): number {
+  return toPixel(toMeter[context.groundUnit], {
+    uom: 'GM',
+    dpi: context.dpi,
+    scaleDenom: context.scaleDenom,
+  });
 }
 
-export function getPixelToGroundFactor(context: SeRenderingContext,): number {
-  return (MM_IN_INCH * context.scaleDenom) / (context.dpi * ONE_THOUSAND * toMeter[context.groundUnit]);
+export function getPixelToGroundFactor(
+  context: Pick<SeRenderingContext, 'groundUnit' | 'dpi' | 'scaleDenom'>
+): number {
+  return (
+    (MM_IN_INCH * context.scaleDenom) / (context.dpi * ONE_THOUSAND * toMeter[context.groundUnit])
+  );
 }

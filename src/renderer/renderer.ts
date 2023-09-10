@@ -1,45 +1,51 @@
-import lineOffset from "@turf/line-offset";
+import lineOffset from '@turf/line-offset';
 
-import BufferOp from "jsts/org/locationtech/jts/operation/buffer/BufferOp";
-import GeoJSONReader from "jsts/org/locationtech/jts/io/GeoJSONReader";
-import GeoJSONWriter from "jsts/org/locationtech/jts/io/GeoJSONWriter";
+import GeoJSONReader from 'jsts/org/locationtech/jts/io/GeoJSONReader';
+import GeoJSONWriter from 'jsts/org/locationtech/jts/io/GeoJSONWriter';
+import BufferOp from 'jsts/org/locationtech/jts/operation/buffer/BufferOp';
 
-import {Feature, FeatureCollection, GeoJsonProperties, Geometry, LineString, Position} from "geojson";
-import {checkUnreachable} from "../helper";
-import {ParameterValue, resolveParameter} from "../model/Parameter";
-import {Rule, Style} from "../model/rule";
+import {
+  Feature,
+  FeatureCollection,
+  GeoJsonProperties,
+  Geometry,
+  LineString,
+  Position,
+} from 'geojson';
+import { MapUnit, WMTSLayerData } from '../Map/MapDefinition';
+import { add, mul } from '../geom/helpers';
+import { applyToEachPoint } from '../geom/transform';
+import { checkUnreachable } from '../helper';
+import { ParameterValue, resolveParameter } from '../model/Parameter';
 import {
   AreaSymbolizer,
   LineSymbolizer,
   PointSymbolizer,
   Symbolizer,
   TextSymbolizer,
-} from "../model/Symbolizer";
-import {toPixel, Uom, WithUom} from "../model/Uom";
-import {drawFill} from "./fillRenderer";
-import {drawGraphics} from "./graphicRenderer";
-import {drawStroke} from "./strokeRenderer";
-import {drawText} from "./textRenderer";
-import {add, mul} from "../geom/helpers";
-import {applyToEachPoint, toMeter} from "../geom/transform";
-import {MapUnit} from "../Map/MapDefinition";
+} from '../model/Symbolizer';
+import { Uom, WithUom, getPixelToGroundFactor, toPixel } from '../model/Uom';
+import { Rule, Style } from '../model/rule';
+import { drawFill } from './fillRenderer';
+import { drawGraphics } from './graphicRenderer';
+import { drawStroke } from './strokeRenderer';
+import { drawText } from './textRenderer';
 
-import {getLogger} from "../logger";
-import {NORTH} from "../model/Graphic";
-
-const logger = getLogger("MapView");
+import { TileMatrix } from '../Map/WmtsUtils';
+import { NORTH } from '../model/Graphic';
+import { Label } from '../model/Label';
 
 // minX. minY, maxY, maxY
 export type Extent = [number, number, number, number];
 
-export function computeContext({uom}: WithUom, context: SeRenderingContext) {
+export function computeContext({ uom }: WithUom, context: SeRenderingContext) {
   const myUom = uom || context.uom;
   return myUom === context.uom
     ? context
     : {
-      ...context,
-      uom: myUom,
-    };
+        ...context,
+        uom: myUom,
+      };
 }
 
 export interface SeRenderingContext {
@@ -53,6 +59,14 @@ export interface SeRenderingContext {
   groundUnit: MapUnit;
   pixelToGroundFactor: number;
   groundToPixelFactor: number;
+  registerLabel: (
+    localRenderingContext: SeRenderingContext,
+    geometry: Geometry,
+    feature: Feature,
+    label: Label
+  ) => void;
+  clearLabels: () => void;
+  drawLabels: () => void;
 }
 
 function applyPerpendicalarOffset<G extends Geometry = Geometry, P = GeoJsonProperties>(
@@ -62,12 +76,12 @@ function applyPerpendicalarOffset<G extends Geometry = Geometry, P = GeoJsonProp
   if (!pOffset) {
     return feature;
   } else {
-    if (feature.geometry.type === 'LineString'
-      || feature.geometry.type === 'MultiLineString') {
-      return lineOffset(feature as Feature<LineString>, pOffset, {units: "degrees"}) as Feature<G, P>;
-    } else if (feature.geometry.type === 'Polygon'
-      || feature.geometry.type === 'MultiPolygon') {
-
+    if (feature.geometry.type === 'LineString' || feature.geometry.type === 'MultiLineString') {
+      return lineOffset(feature as Feature<LineString>, pOffset, { units: 'degrees' }) as Feature<
+        G,
+        P
+      >;
+    } else if (feature.geometry.type === 'Polygon' || feature.geometry.type === 'MultiPolygon') {
       const reader = new GeoJSONReader();
       const geom = reader.read(feature.geometry);
       const buffered = BufferOp.bufferOp(geom, pOffset);
@@ -88,7 +102,7 @@ function forEachFeature<G extends Geometry = Geometry, P = GeoJsonProperties>(
   features: Feature<G, P>[],
   perpendicularOffset: ParameterValue<number> | undefined,
   context: SeRenderingContext,
-  fn: (feature: Feature<G, P>,) => void
+  fn: (feature: Feature<G, P>) => void
 ): void {
   features.forEach((feature) => {
     const pOffset = toPixel(resolveParameter(perpendicularOffset, feature) || 0, context);
@@ -99,7 +113,7 @@ function forEachFeature<G extends Geometry = Geometry, P = GeoJsonProperties>(
 
 function renderAreaSymbolizer(
   layer: FeatureCollection,
-  {fill, stroke, perpendicularOffset}: AreaSymbolizer,
+  { fill, stroke, perpendicularOffset }: AreaSymbolizer,
   context: SeRenderingContext
 ) {
   if (fill || stroke) {
@@ -116,7 +130,7 @@ function renderAreaSymbolizer(
 
 function renderLineSymbolizer(
   layer: FeatureCollection,
-  {stroke, perpendicularOffset}: LineSymbolizer,
+  { stroke, perpendicularOffset }: LineSymbolizer,
   context: SeRenderingContext
 ) {
   if (stroke) {
@@ -147,7 +161,6 @@ function renderPointSymbolizer(
   }
 }
 
-
 function renderTextSymbolizer(
   layer: FeatureCollection,
   symbolizer: TextSymbolizer,
@@ -156,16 +169,10 @@ function renderTextSymbolizer(
   if (symbolizer.label) {
     forEachFeature(layer.features, symbolizer.perpendicularOffset, context, (feature) => {
       // TODO apply transform
-      drawText(
-        symbolizer.label,
-        feature.geometry,
-        feature,
-        context
-      );
+      drawText(symbolizer.label, feature.geometry, feature, context);
     });
   }
 }
-
 
 function renderSymbolizer(
   layer: FeatureCollection,
@@ -173,24 +180,20 @@ function renderSymbolizer(
   context: SeRenderingContext
 ) {
   const newContext = computeContext(symbolizer, context);
-  if (symbolizer.type === "AreaSymbolizer") {
+  if (symbolizer.type === 'AreaSymbolizer') {
     renderAreaSymbolizer(layer, symbolizer, newContext);
-  } else if (symbolizer.type === "LineSymbolizer") {
+  } else if (symbolizer.type === 'LineSymbolizer') {
     renderLineSymbolizer(layer, symbolizer, newContext);
-  } else if (symbolizer.type === "PointSymbolizer") {
+  } else if (symbolizer.type === 'PointSymbolizer') {
     renderPointSymbolizer(layer, symbolizer, newContext);
-  } else if (symbolizer.type === "TextSymbolizer") {
+  } else if (symbolizer.type === 'TextSymbolizer') {
     renderTextSymbolizer(layer, symbolizer, newContext);
   } else {
     checkUnreachable(symbolizer);
   }
 }
 
-function renderRule(
-  layer: FeatureCollection,
-  rule: Rule,
-  context: SeRenderingContext
-) {
+function renderRule(layer: FeatureCollection, rule: Rule, context: SeRenderingContext) {
   rule.symbolizers
     .sort((a, b) => {
       return (a.level ?? 0) - (b.level ?? 0);
@@ -200,8 +203,12 @@ function renderRule(
     });
 }
 
-
-function toMediaFeature(feature: Geometry, translate: Position, factor: number, context: SeRenderingContext): Geometry {
+function toMediaFeature(
+  feature: Geometry,
+  translate: Position,
+  factor: number,
+  context: SeRenderingContext
+): Geometry {
   return applyToEachPoint(feature, (point: Position) => {
     const mPoint = mul(factor, add(point, translate));
     mPoint[1] = (mPoint[1] - context.height) * -1; // TODO: axis direction
@@ -209,42 +216,38 @@ function toMediaFeature(feature: Geometry, translate: Position, factor: number, 
   });
 }
 
-function convertToMediaCoordinateSystem(layer: FeatureCollection, context: SeRenderingContext): FeatureCollection {
+function convertToMediaCoordinateSystem(
+  layer: FeatureCollection,
+  context: SeRenderingContext
+): FeatureCollection {
   const factor = context.groundToPixelFactor;
 
-  const translate: Position = [
-    -context.groundExtent[0],
-    - context.groundExtent[1]];
+  const translate: Position = [-context.groundExtent[0], -context.groundExtent[1]];
 
   const mediaLayer: FeatureCollection = {
     type: 'FeatureCollection',
-    features: layer.features.map(feature => {
+    features: layer.features.map((feature) => {
       return {
         ...feature,
-        geometry: toMediaFeature(feature.geometry, translate, factor, context)
-      }
-    })
-  }
+        geometry: toMediaFeature(feature.geometry, translate, factor, context),
+      };
+    }),
+  };
 
   return mediaLayer;
 }
 
-export function render(
-  layer: FeatureCollection,
-  style: Style,
-  context: SeRenderingContext,
-) {
-  const rules = style.rules
-    .filter((rule) => {
-      if (rule.minScale != null && context.scaleDenom < rule.minScale) {
-        return false;
-      }
-      if (rule.maxScale != null && context.scaleDenom > rule.maxScale) {
-        return false;
-      }
-      // Apply filter
-      return true;
-    });
+export function render(layer: FeatureCollection, style: Style, context: SeRenderingContext) {
+  const rules = style.rules.filter((rule) => {
+    if (rule.minScale != null && context.scaleDenom < rule.minScale) {
+      return false;
+    }
+    if (rule.maxScale != null && context.scaleDenom > rule.maxScale) {
+      return false;
+    }
+    // Apply filter
+    return true;
+  });
 
   // TODO:
   // forEach feature
@@ -261,4 +264,118 @@ export function render(
       renderRule(mediaLayer, rule, context);
     });
   }
+}
+
+export function renderTiles(layer: WMTSLayerData, context: SeRenderingContext) {
+  console.log('RENDER WMTS TILES', layer, context);
+  let tmMin: TileMatrix | undefined = undefined as TileMatrix | undefined;
+  let tmMax: TileMatrix | undefined = undefined as TileMatrix | undefined;
+  layer.tileMatrixSet.TileMatrix.forEach((tm) => {
+    if (tm.ScaleDenominator > context.scaleDenom) {
+      tmMin = tm;
+    } else {
+      if (!tmMax) {
+        tmMax = tm;
+      }
+    }
+  });
+  console.log('TileMatrix', tmMin, tmMax);
+  const selectedTm = tmMin || tmMax;
+  if (!selectedTm) {
+    return;
+  }
+  console.log('Top Left', selectedTm.TopLeftCorner);
+  console.log('Matrix', selectedTm.MatrixWidth, selectedTm.MatrixHeight);
+  console.log('Tile', selectedTm.TileWidth, selectedTm.TileHeight);
+
+  // WMTS spec 1px = 0.28mm; 0.28 mm => dpi= 25.4/ 0.28 inch
+  const factor = getPixelToGroundFactor({
+    dpi: 25.4 / 0.28, // context.dpi,
+    groundUnit: context.groundUnit,
+    scaleDenom: selectedTm.ScaleDenominator,
+  });
+
+  const groundTileHeight = selectedTm.TileHeight * factor;
+  const groundTileWidth = selectedTm.TileWidth * factor;
+
+  console.log(
+    'Extent: ',
+    context.groundExtent[0],
+    '\t',
+    context.groundExtent[1],
+    '\t',
+    context.groundExtent[2],
+    '\t',
+    context.groundExtent[3],
+    '\t'
+  );
+  console.log('TileGround Size', groundTileWidth, groundTileHeight, context.groundUnit);
+  const leftTileIndex = Math.max(
+    0,
+    Math.floor((context.groundExtent[0] - selectedTm.TopLeftCorner[0]) / groundTileWidth)
+  );
+  const rightTileIndex = Math.min(
+    selectedTm.MatrixWidth - 1,
+    Math.ceil((context.groundExtent[2] - selectedTm.TopLeftCorner[0]) / groundTileWidth)
+  );
+  const topTileIndex = Math.max(
+    0,
+    Math.floor((selectedTm.TopLeftCorner[1] - context.groundExtent[3]) / groundTileHeight)
+  );
+
+  const bottomTileIndex = Math.min(
+    selectedTm.MatrixHeight - 1,
+    Math.ceil((selectedTm.TopLeftCorner[1] - context.groundExtent[1]) / groundTileHeight)
+  );
+
+  // tileX = matrix.scale
+  // eTileX = context.scale
+  const tileWidthPx = groundTileWidth * context.groundToPixelFactor;
+  const tileHeightPx = groundTileHeight * context.groundToPixelFactor;
+
+  console.log('Tiles', leftTileIndex, topTileIndex, rightTileIndex, bottomTileIndex);
+  if (leftTileIndex <= rightTileIndex && topTileIndex <= bottomTileIndex) {
+    for (let x = leftTileIndex; x <= rightTileIndex; x++) {
+      for (let y = topTileIndex; y <= bottomTileIndex; y++) {
+        const url = layer.getTileUrl(selectedTm.Identifier, x, y);
+        const img = document.createElement('img');
+        const gridPx = tileToPixel(selectedTm, [groundTileWidth, groundTileHeight], x, y, context);
+        img.src = url;
+
+        img.onload = () => {
+          if (context.canvas) {
+            context.canvas.globalAlpha = 0.4;
+            context.canvas.drawImage(img, gridPx[0], gridPx[1], tileWidthPx, tileHeightPx);
+            context.canvas.globalAlpha = 1;
+          }
+        };
+
+        console.log('tile ', url);
+        console.log('Position', gridPx);
+      }
+    }
+  } else {
+    console.error('Tiles range is invalid');
+  }
+}
+
+function tileToPixel(
+  matrix: TileMatrix,
+  groundTileSize: Position,
+  row: number,
+  col: number,
+  context: SeRenderingContext
+): Position {
+  const tileGroundCoord: Position = [
+    matrix.TopLeftCorner[0] + row * groundTileSize[0],
+    matrix.TopLeftCorner[1] - col * groundTileSize[1],
+  ];
+  console.log('');
+
+  const factor = context.groundToPixelFactor;
+  const translate: Position = [-context.groundExtent[0], -context.groundExtent[1]];
+
+  const mPoint = mul(factor, add(tileGroundCoord, translate));
+  mPoint[1] = (mPoint[1] - context.height) * -1; // TODO: axis direction
+  return mPoint;
 }
