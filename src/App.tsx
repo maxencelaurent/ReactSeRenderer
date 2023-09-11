@@ -493,9 +493,13 @@ const roadStyle: Style = {
               type: 'ValueReference',
               property: 'highway',
             },
+            font: {
+              type: 'StyleFont',
+              fontSize: 22,
+            },
             fill: {
               type: 'SolidFill',
-              color: '#000000',
+              color: 'black',
             },
             stroke: {
               type: 'PenStroke',
@@ -725,13 +729,14 @@ export default function App() {
         <LayerDefinition features={paths} layerId="Paths" dataCrs="EPSG:4326" />
 
         <MapView center={[2539092, 1181133]} scaleDenom={5000} className="MyMapView">
-          <WMTSLayer index={0} layerId="baseLayer1" />
+          <WMTSLayer visible={true} index={0} layerId="baseLayer1" opacity={0.3} />
           <StyledLayer index={1} layerId="Roads" style={roadStyle} />
           <StyledLayer index={5} layerId="Buildings" style={buildingStyle} />
           <StyledLayer index={10} layerId="Paths" style={pathsStyle} />
         </MapView>
 
         <MapView noZoom noPan center={[2539092, 1181133]} scaleDenom={25000} className="MiniMap">
+          <WMTSLayer visible={true} index={0} layerId="baseLayer1" opacity={0.3} />
           <StyledLayer index={10} layerId="Roads" style={roadStyle} />
           <StyledLayer index={5} layerId="Buildings" style={buildingStyle} />
         </MapView>

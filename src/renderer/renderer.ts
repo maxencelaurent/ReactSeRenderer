@@ -12,7 +12,7 @@ import {
   LineString,
   Position,
 } from 'geojson';
-import { MapUnit, WMTSLayerData } from '../Map/MapDefinition';
+import { LayerId, MapUnit, WMTSLayerData } from '../Map/MapDefinition';
 import { add, mul } from '../geom/helpers';
 import { applyToEachPoint } from '../geom/transform';
 import { checkUnreachable } from '../helper';
@@ -49,8 +49,6 @@ export function computeContext({ uom }: WithUom, context: SeRenderingContext) {
 }
 
 export interface SeRenderingContext {
-  canvas: CanvasRenderingContext2D | undefined;
-  groundExtent: Extent;
   width: number;
   height: number;
   uom: Uom;
@@ -59,6 +57,7 @@ export interface SeRenderingContext {
   groundUnit: MapUnit;
   pixelToGroundFactor: number;
   groundToPixelFactor: number;
+  layerId: string;
   registerLabel: (
     localRenderingContext: SeRenderingContext,
     geometry: Geometry,
@@ -67,6 +66,10 @@ export interface SeRenderingContext {
   ) => void;
   clearLabels: () => void;
   drawLabels: () => void;
+  getCanvas: (layerId: LayerId) => CanvasRenderingContext2D | undefined;
+  getLabelCanvas: () => CanvasRenderingContext2D | undefined;
+  flatten: () => void;
+  groundExtent: Extent;
 }
 
 function applyPerpendicalarOffset<G extends Geometry = Geometry, P = GeoJsonProperties>(
@@ -266,7 +269,7 @@ export function render(layer: FeatureCollection, style: Style, context: SeRender
   }
 }
 
-export function renderTiles(layer: WMTSLayerData, context: SeRenderingContext) {
+export function renderTiles(layer: WMTSLayerData, context: SeRenderingContext, opacity: number) {
   console.log('RENDER WMTS TILES', layer, context);
   let tmMin: TileMatrix | undefined = undefined as TileMatrix | undefined;
   let tmMax: TileMatrix | undefined = undefined as TileMatrix | undefined;
@@ -332,30 +335,46 @@ export function renderTiles(layer: WMTSLayerData, context: SeRenderingContext) {
   // eTileX = context.scale
   const tileWidthPx = groundTileWidth * context.groundToPixelFactor;
   const tileHeightPx = groundTileHeight * context.groundToPixelFactor;
+  const canvas = context.getCanvas(layer.layerId);
 
-  console.log('Tiles', leftTileIndex, topTileIndex, rightTileIndex, bottomTileIndex);
-  if (leftTileIndex <= rightTileIndex && topTileIndex <= bottomTileIndex) {
-    for (let x = leftTileIndex; x <= rightTileIndex; x++) {
-      for (let y = topTileIndex; y <= bottomTileIndex; y++) {
-        const url = layer.getTileUrl(selectedTm.Identifier, x, y);
-        const img = document.createElement('img');
-        const gridPx = tileToPixel(selectedTm, [groundTileWidth, groundTileHeight], x, y, context);
-        img.src = url;
+  if (canvas) {
+    const tiles: Promise<boolean>[] = [];
+    canvas.globalAlpha = opacity;
 
-        img.onload = () => {
-          if (context.canvas) {
-            context.canvas.globalAlpha = 0.4;
-            context.canvas.drawImage(img, gridPx[0], gridPx[1], tileWidthPx, tileHeightPx);
-            context.canvas.globalAlpha = 1;
-          }
-        };
+    console.log('Tiles', leftTileIndex, topTileIndex, rightTileIndex, bottomTileIndex);
+    if (leftTileIndex <= rightTileIndex && topTileIndex <= bottomTileIndex) {
+      for (let x = leftTileIndex; x <= rightTileIndex; x++) {
+        for (let y = topTileIndex; y <= bottomTileIndex; y++) {
+          const url = layer.getTileUrl(selectedTm.Identifier, x, y);
+          const img = document.createElement('img');
+          const gridPx = tileToPixel(
+            selectedTm,
+            [groundTileWidth, groundTileHeight],
+            x,
+            y,
+            context
+          );
 
-        console.log('tile ', url);
-        console.log('Position', gridPx);
+          const p = new Promise<boolean>((resolve) => {
+            img.onload = () => {
+              canvas.drawImage(img, gridPx[0], gridPx[1], tileWidthPx, tileHeightPx);
+              resolve(true);
+            };
+            img.src = url;
+          });
+
+          tiles.push(p);
+          console.log('tile ', url);
+          console.log('Position', gridPx);
+        }
       }
+    } else {
+      console.error('Tiles range is invalid');
     }
-  } else {
-    console.error('Tiles range is invalid');
+    Promise.all(tiles).then(() => {
+      context.flatten();
+      canvas.globalAlpha = 1;
+    });
   }
 }
 

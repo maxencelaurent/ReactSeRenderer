@@ -45,9 +45,12 @@ function getAllLines(geometry: Geometry): Position[][] {
   return allGeoms;
 }
 
-export function setStrokeStyke(context: SeRenderingContext, stroke: PenStroke, feature: Feature) {
-  const ctx = context.canvas;
-
+export function setStrokeStyke(
+  context: SeRenderingContext,
+  stroke: PenStroke,
+  feature: Feature,
+  ctx: CanvasRenderingContext2D
+) {
   if (ctx == null) {
     return;
   }
@@ -80,7 +83,7 @@ export function drawPenStroke(
   feature: Feature,
   context: SeRenderingContext
 ): void {
-  const ctx = context.canvas;
+  const ctx = context.getCanvas(context.layerId);
 
   if (ctx == null) {
     return;
@@ -91,7 +94,7 @@ export function drawPenStroke(
   const allGeoms = getAllLines(geometry);
 
   if (stroke.fill.type === 'SolidFill') {
-    setStrokeStyke(context, stroke, feature);
+    setStrokeStyke(context, stroke, feature, ctx);
 
     allGeoms.forEach((feature) => {
       if (feature.length > 1) {

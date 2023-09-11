@@ -19,7 +19,7 @@ import { LayerId, MapCtx } from './MapDefinition';
 import { Label } from '../model/Label';
 import createRTree, { Rectangle } from 'rtree';
 import { getAllPoints } from '../renderer/graphicRenderer';
-import { resolveParameter } from '../model/Parameter';
+import { getColor, resolveParameter } from '../model/Parameter';
 import { setStrokeStyke } from '../renderer/strokeRenderer';
 
 const logger = getLogger('MapView');
@@ -45,7 +45,7 @@ function getMediaPosition(container: HTMLDivElement, e: MouseEvent): Position {
 
 export interface MapViewContext {
   registerLayer: (layerId: LayerId, style: Style, index: number, visible: boolean) => void;
-  registerWMTSLayer: (layerId: LayerId, index: number, visible: boolean) => void;
+  registerWMTSLayer: (layerId: LayerId, index: number, visible: boolean, opacity: number) => void;
   deleteLayer: (layerId: LayerId) => void;
 }
 
@@ -68,6 +68,7 @@ interface WMTSLayerInternal {
   layerId: LayerId;
   index: number;
   visible: boolean;
+  opacity: number;
 }
 
 type StyledLayerInternal = VectorStyledLayerInternal | WMTSLayerInternal;
@@ -94,6 +95,17 @@ function computeExtent(center: Position, context: SeRenderingContext): Extent {
   return newExtent;
 }
 
+const clearCanvas = (canvas?: HTMLCanvasElement) => {
+  if (!canvas) {
+    return;
+  }
+  logger.info('Clear Canvas');
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+};
+
 interface FeatureToLabel {
   [layerId: string]: [
     {
@@ -118,12 +130,20 @@ export default function MapView({
 }: MapViewProps): JSX.Element {
   const [layers, setLayers] = useState<StyledLayerInternal[]>([]);
 
+  const layersRef = useRef(layers);
+  layersRef.current = layers;
+
   const { getFeatures, getWMTSLayer, groundUnit } = useContext(MapCtx);
 
   const [groundMousePos, setGroundMousePos] = useState<Position>([0, 0]);
   //const [center, setCenter] = useState<Position>([0, 0]);
 
+  const canvasElemRef = useRef<HTMLCanvasElement>();
+
   const labelsRef = useRef<FeatureToLabel>({});
+
+  const labelCanvasRef = useRef<CanvasRenderingContext2D>();
+  const canvasRef = useRef<Record<LayerId, CanvasRenderingContext2D>>({});
 
   const registerLabelCb = useCallback(
     (context: SeRenderingContext, geometry: Geometry, feature: Feature, label: Label) => {
@@ -145,9 +165,10 @@ export default function MapView({
   }, []);
 
   const drawLabelsCb = useCallback(() => {
-    const ctx = contextRef.current.canvas;
+    const canvas = contextRef.current.getLabelCanvas();
     logger.info('Draw Labels');
-    if (!ctx) {
+    if (!canvas) {
+      logger.info('No Label Canvas');
       return;
     }
     const rTree = createRTree();
@@ -157,13 +178,13 @@ export default function MapView({
 
         const fontSize =
           toPixel(resolveParameter(label.font?.fontSize || 12, feature), renderingContext) || 1;
-        ctx.font = `${fontSize}px`;
+        console.log('FontSize', fontSize);
+        canvas.font = `${fontSize}px`;
 
-        ctx.fillStyle = 'black';
         if (label.halo) {
-          ctx.shadowBlur =
+          canvas.shadowBlur =
             toPixel(resolveParameter(label.halo.radius || 0, feature), renderingContext) || 1;
-          ctx.shadowColor = 'hotpink';
+          canvas.shadowColor = 'hotpink';
         }
 
         const text = resolveParameter(label.textLabel, feature);
@@ -178,7 +199,7 @@ export default function MapView({
           //roboto.draw(ctx, text, point[0], point[1] + 40, fontSize,  {});
           //ctx.fillText(text, point[0], point[1]);
           //}
-          const bbox = ctx.measureText(text);
+          const bbox = canvas.measureText(text);
           const padding = 2;
 
           const w = bbox.width + 2 * padding;
@@ -213,13 +234,16 @@ export default function MapView({
 
             if (label.stroke) {
               if (label.stroke.type === 'PenStroke') {
-                setStrokeStyke(renderingContext, label.stroke, feature);
+                setStrokeStyke(renderingContext, label.stroke, feature, canvas);
               }
-              ctx.strokeText(text, rect.x + padding, rect.y + padding);
+              canvas.strokeText(text, rect.x + padding, rect.y + padding);
             }
 
             if (label.fill) {
-              ctx.fillText(text, rect.x + padding, rect.y + padding);
+              if (label.fill.type === 'SolidFill') {
+                canvas.fillStyle = getColor(label.fill.color, label.fill.opacity ?? 1);
+              }
+              canvas.fillText(text, rect.x + padding, rect.y + padding);
             }
 
             /*
@@ -235,15 +259,14 @@ export default function MapView({
             */
           }
         });
-        ctx.shadowBlur = 0;
-        ctx.shadowColor = '';
+        canvas.shadowBlur = 0;
+        canvas.shadowColor = '';
       });
     });
     logger.info('Labels Drawn');
   }, []);
 
   const [renderingContext, setRenderingContext] = useState<SeRenderingContext>({
-    canvas: undefined,
     dpi: 96,
     groundExtent: [0, 0, 0, 0],
     height: 0,
@@ -251,11 +274,75 @@ export default function MapView({
     groundUnit: 'm',
     scaleDenom: initialScaleDenom,
     uom: 'PX',
-    groundToPixelFactor: 1, // TODO
-    pixelToGroundFactor: 1, // TODO
+    groundToPixelFactor: 1,
+    pixelToGroundFactor: 1,
+    layerId: '',
     registerLabel: registerLabelCb,
     clearLabels: clearLabelsCb,
     drawLabels: drawLabelsCb,
+    flatten: () => {
+      const context = canvasElemRef.current?.getContext('2d');
+      clearCanvas(canvasElemRef.current);
+      if (context) {
+        const sorted = [...layersRef.current].sort((a, b) => {
+          return a.index - b.index;
+        });
+        sorted.forEach((layer) => {
+          const layerCanvas = canvasRef.current[layer.layerId];
+          if (layerCanvas) {
+            context.drawImage(layerCanvas.canvas, 0, 0);
+          }
+        });
+        if (labelCanvasRef.current) {
+          logger.info('Label Canvas', labelCanvasRef.current);
+          context.drawImage(labelCanvasRef.current.canvas, 0, 0);
+        }
+      }
+    },
+    getCanvas: (layerId) => {
+      const context = canvasRef.current[layerId];
+
+      if (context) {
+        return context;
+      }
+
+      if (canvasElemRef.current && canvasElemRef.current.width && canvasElemRef.current.height) {
+        const layer = document.createElement('canvas');
+        layer.width = canvasElemRef.current.width;
+        layer.height = canvasElemRef.current.height;
+
+        const newContext = layer.getContext('2d');
+        logger.info('GetContext');
+        if (newContext) {
+          canvasRef.current[layerId] = newContext;
+          return newContext;
+        }
+      }
+      delete canvasRef.current[layerId];
+      return undefined;
+    },
+    getLabelCanvas: () => {
+      const eContext = labelCanvasRef.current;
+
+      if (eContext) {
+        return eContext;
+      }
+
+      if (canvasElemRef.current && canvasElemRef.current.width && canvasElemRef.current.height) {
+        const layer = document.createElement('canvas');
+        logger.info('canvas elem', canvasElemRef.current?.width);
+        layer.width = canvasElemRef.current.width;
+        layer.height = canvasElemRef.current.height;
+
+        const context = layer.getContext('2d');
+        if (context) {
+          labelCanvasRef.current = context;
+          return context;
+        }
+        labelCanvasRef.current = undefined;
+      }
+      return undefined;
+    },
   });
 
   useEffect(() => {
@@ -274,9 +361,10 @@ export default function MapView({
   contextRef.current = renderingContext;
 
   const initCanvasCb = useCallback((ref: HTMLCanvasElement | null) => {
+    canvasElemRef.current = ref || undefined;
     setRenderingContext((c) => ({
       ...c,
-      canvas: ref?.getContext('2d') || undefined,
+      //canvas: ref?.getContext('2d') || undefined,
     }));
   }, []);
 
@@ -285,9 +373,9 @@ export default function MapView({
       logger.info(`Register StyledLayer ${layerId}`);
       setLayers((layers) => {
         const newLayers = [...layers];
-        const index = newLayers.findIndex((l) => l.layerId === layerId);
+        const i = newLayers.findIndex((l) => l.layerId === layerId);
 
-        if (index < 0) {
+        if (i < 0) {
           newLayers.push({
             type: 'VectorStyledLayer',
             index,
@@ -296,7 +384,7 @@ export default function MapView({
             visible,
           });
         } else {
-          newLayers[index] = {
+          newLayers[i] = {
             type: 'VectorStyledLayer',
             index,
             layerId,
@@ -315,35 +403,40 @@ export default function MapView({
     []
   );
 
-  const registerWMTSLayerCb = useCallback((layerId: LayerId, index: number, visible: boolean) => {
-    logger.info(`Register StyledLayer ${layerId}`);
-    setLayers((layers) => {
-      const newLayers = [...layers];
-      const index = newLayers.findIndex((l) => l.layerId === layerId);
+  const registerWMTSLayerCb = useCallback(
+    (layerId: LayerId, index: number, visible: boolean, opacity: number) => {
+      logger.info(`Register StyledLayer ${layerId}`);
+      setLayers((layers) => {
+        const newLayers = [...layers];
+        const i = newLayers.findIndex((l) => l.layerId === layerId);
 
-      if (index < 0) {
-        newLayers.push({
-          type: 'WMTSLayerInternal',
-          index,
-          layerId,
-          visible,
+        if (i < 0) {
+          newLayers.push({
+            type: 'WMTSLayerInternal',
+            index,
+            layerId,
+            visible,
+            opacity,
+          });
+        } else {
+          newLayers[i] = {
+            type: 'WMTSLayerInternal',
+            index,
+            layerId,
+            visible,
+            opacity,
+          };
+        }
+        newLayers.sort((a, b) => {
+          return a.index - b.index;
         });
-      } else {
-        newLayers[index] = {
-          type: 'WMTSLayerInternal',
-          index,
-          layerId,
-          visible,
-        };
-      }
-      newLayers.sort((a, b) => {
-        return a.index - b.index;
-      });
 
-      return newLayers;
-    });
-    return layerId;
-  }, []);
+        return newLayers;
+      });
+      return layerId;
+    },
+    []
+  );
 
   const deleteLayerCb = useCallback((layerId: LayerId) => {
     logger.info(`Delete StyledLayer ${layerId}`);
@@ -406,20 +499,25 @@ export default function MapView({
 
   // MapView Render Effect
   useEffect(() => {
-    const ctx = renderingContext.canvas;
-    if (ctx) {
-      ctx.clearRect(0, 0, renderingContext.width, renderingContext.height);
+    if (canvasRef.current) {
+      // clear all canvas
+      clearCanvas(labelCanvasRef.current?.canvas);
+      Object.values(canvasRef.current).forEach((canvas) => {
+        clearCanvas(canvas.canvas);
+      });
+
       logger.info('Do Render The Map');
       renderingContext.clearLabels();
       layers
         .filter((layer) => layer.visible)
         .sort((a, b) => a.index - b.index)
         .forEach((layer) => {
+          const newContext = { ...renderingContext, layerId: layer.layerId };
           if (layer.type === 'VectorStyledLayer') {
             const data = getFeatures(layer.layerId, renderingContext.groundExtent);
             //          const data = layersData[layer.layerId];
             if (data) {
-              render(data, layer.style, renderingContext);
+              render(data, layer.style, newContext);
             } else {
               logger.warn(`Render Layer ${layer.layerId}: No Data`);
             }
@@ -427,11 +525,12 @@ export default function MapView({
             // WMTS Layer
             const wmtsLayer = getWMTSLayer(layer.layerId);
             if (wmtsLayer) {
-              renderTiles(wmtsLayer, renderingContext);
+              renderTiles(wmtsLayer, newContext, layer.opacity);
             }
           }
         });
       renderingContext.drawLabels();
+      renderingContext.flatten();
     }
   }, [layers, renderingContext, groundUnit, getFeatures, getWMTSLayer]);
 

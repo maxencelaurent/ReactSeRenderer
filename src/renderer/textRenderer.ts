@@ -1,11 +1,8 @@
 import { Feature, Geometry } from 'geojson';
 import { Label } from '../model/Label';
-import { resolveParameter } from '../model/Parameter';
-import { toPixel } from '../model/Uom';
-import { getAllPoints } from './graphicRenderer';
 import { computeContext, SeRenderingContext } from './renderer';
 
-import { Font, load } from 'opentype.js/dist/opentype.module';
+import { Font, load } from 'opentype.js';
 import getLogger from '../logger';
 
 const logger = getLogger('TextRenderer');
@@ -19,8 +16,8 @@ load('fonts/Roboto-Black.ttf', function (err, font) {
   } else {
     roboto = font;
     // logger.info("Font: ", font);
-    // const path = font.getPath('Hello, World!', 0, 150, 72);
-    // logger.info("Path: ", path);
+    const path = roboto.getPath('Hello, World!', 0, 150, 72);
+    logger.info('Path: ', path);
 
     // If you just want to draw the text you can also use font.draw(ctx, text, x, y, fontSize).
     //path.draw(ctx);
@@ -33,7 +30,7 @@ export function drawText(
   feature: Feature,
   context: SeRenderingContext
 ): void {
-  const ctx = context.canvas;
+  const ctx = context.getCanvas(context.layerId);
 
   if (ctx) {
     //logger.info('Register Label');

@@ -1,24 +1,14 @@
-import { Feature, Geometry, Polygon, Position } from "geojson";
-import {
-  Graphic,
-  GraphicSize,
-  MarkGraphic,
-  NORTH,
-  WellKnownName,
-} from "../model/Graphic";
-import { resolveParameter } from "../model/Parameter";
-import { toPixel } from "../model/Uom";
-import { computeContext, SeRenderingContext } from "./renderer";
+import { Feature, Geometry, Polygon, Position } from 'geojson';
+import { Graphic, GraphicSize, MarkGraphic, NORTH, WellKnownName } from '../model/Graphic';
+import { resolveParameter } from '../model/Parameter';
+import { toPixel } from '../model/Uom';
+import { computeContext, SeRenderingContext } from './renderer';
 
-import pointOnFeature from "@turf/point-on-feature";
-import centerOfMass from "@turf/center-of-mass";
-import { drawFill } from "./fillRenderer";
-import { drawStroke } from "./strokeRenderer";
-import getLogger from "../logger";
-import { getEllipse } from "./WellKnownShape";
-import { applyToEachPoint, TransformPoint } from "../geom/transform";
-
-const logger = getLogger("GraphicRenderer");
+import pointOnFeature from '@turf/point-on-feature';
+import { drawFill } from './fillRenderer';
+import { drawStroke } from './strokeRenderer';
+import { getEllipse } from './WellKnownShape';
+import { applyToEachPoint, TransformPoint } from '../geom/transform';
 
 function getPointOnLine(line: Position[]): Position {
   // TODO: crop visible part of line and compute one point in the middle
@@ -28,39 +18,34 @@ function getPointOnLine(line: Position[]): Position {
 function getPointInPolygon(polygon: Position[][]): Position {
   // TODO: intersect with extent and get most inner point
   const g: Geometry = {
-    type: "Polygon",
+    type: 'Polygon',
     coordinates: polygon,
   };
   return pointOnFeature(g).geometry.coordinates;
   //return centerOfMass(g).geometry.coordinates;
 }
 
-export function getAllPoints(
-  geometry: Geometry,
-  onVertex: boolean
-): Position[] {
+export function getAllPoints(geometry: Geometry, onVertex: boolean): Position[] {
   switch (geometry.type) {
-    case "Point":
+    case 'Point':
       return [geometry.coordinates];
-    case "MultiPoint":
+    case 'MultiPoint':
       return geometry.coordinates;
-    case "LineString":
-      return onVertex
-        ? geometry.coordinates
-        : [getPointOnLine(geometry.coordinates)];
-    case "MultiLineString":
+    case 'LineString':
+      return onVertex ? geometry.coordinates : [getPointOnLine(geometry.coordinates)];
+    case 'MultiLineString':
       return onVertex
         ? geometry.coordinates.flatMap((g) => g)
         : geometry.coordinates.map(getPointOnLine);
-    case "Polygon":
+    case 'Polygon':
       return onVertex
         ? geometry.coordinates.flatMap((g) => g)
         : [getPointInPolygon(geometry.coordinates)];
-    case "MultiPolygon":
+    case 'MultiPolygon':
       return geometry.coordinates.flatMap((polygon) =>
         onVertex ? polygon.flatMap((g) => g) : [getPointInPolygon(polygon)]
       );
-    case "GeometryCollection":
+    case 'GeometryCollection':
       return [];
   }
 }
@@ -74,7 +59,7 @@ function computeSize(
   context: SeRenderingContext
 ): { width: number; height: number } {
   if (size == null) {
-    if (wellKnownShape === "triangle") {
+    if (wellKnownShape === 'triangle') {
       return {
         height: 1.5 * SQRT_3,
         width: 3,
@@ -87,9 +72,9 @@ function computeSize(
     }
   }
   const myContext = computeContext(size, context);
-  if (size.type === "Size") {
+  if (size.type === 'Size') {
     const x = toPixel(resolveParameter(size.size, feature), myContext);
-    if (wellKnownShape === "triangle") {
+    if (wellKnownShape === 'triangle') {
       return {
         height: x * SQRT_3,
         width: x,
@@ -100,7 +85,7 @@ function computeSize(
         width: x,
       };
     }
-  } else if (size.type === "ViewBox") {
+  } else if (size.type === 'ViewBox') {
     return {
       height: toPixel(resolveParameter(size.height, feature), myContext),
       width: toPixel(resolveParameter(size.width, feature), myContext),
@@ -133,29 +118,29 @@ export function drawMarkGraphic(
   const hh = size.height / 2;
 
   if (
-    graphic.anchorPosition === "UPPER_RIGHT" ||
-    graphic.anchorPosition === "RIGHT" ||
-    graphic.anchorPosition === "LOWER_RIGHT"
+    graphic.anchorPosition === 'UPPER_RIGHT' ||
+    graphic.anchorPosition === 'RIGHT' ||
+    graphic.anchorPosition === 'LOWER_RIGHT'
   ) {
     dx = hw;
   } else if (
-    graphic.anchorPosition === "UPPER_LEFT" ||
-    graphic.anchorPosition === "LEFT" ||
-    graphic.anchorPosition === "LOWER_LEFT"
+    graphic.anchorPosition === 'UPPER_LEFT' ||
+    graphic.anchorPosition === 'LEFT' ||
+    graphic.anchorPosition === 'LOWER_LEFT'
   ) {
     dx = -hw;
   }
 
   if (
-    graphic.anchorPosition === "UPPER_LEFT" ||
-    graphic.anchorPosition === "TOP" ||
-    graphic.anchorPosition === "UPPER_RIGHT"
+    graphic.anchorPosition === 'UPPER_LEFT' ||
+    graphic.anchorPosition === 'TOP' ||
+    graphic.anchorPosition === 'UPPER_RIGHT'
   ) {
     dy = -hh;
   } else if (
-    graphic.anchorPosition === "LOWER_LEFT" ||
-    graphic.anchorPosition === "BOTTOM" ||
-    graphic.anchorPosition === "LOWER_RIGHT"
+    graphic.anchorPosition === 'LOWER_LEFT' ||
+    graphic.anchorPosition === 'BOTTOM' ||
+    graphic.anchorPosition === 'LOWER_RIGHT'
   ) {
     dy = hh;
   }
@@ -176,13 +161,13 @@ export function drawMarkGraphic(
     const cx = point[0] + dx;
     const cy = point[1] + dy;
     let shape: Polygon = {
-      type: "Polygon",
+      type: 'Polygon',
       coordinates: [],
     };
 
-    if (wellKnownName === "circle") {
+    if (wellKnownName === 'circle') {
       shape.coordinates = getEllipse(size.width, size.height, 0, 0);
-    } else if (wellKnownName === "square") {
+    } else if (wellKnownName === 'square') {
       shape.coordinates = [
         [
           [-hw, -hh],
@@ -192,7 +177,7 @@ export function drawMarkGraphic(
           [-hw, -hh],
         ],
       ];
-    } else if (wellKnownName === "triangle") {
+    } else if (wellKnownName === 'triangle') {
       shape.coordinates = [
         [
           [-hw, +hh],
@@ -228,7 +213,7 @@ export function drawGraphic(
   feature: Feature,
   context: SeRenderingContext
 ): void {
-  if (graphic.type === "MarkGraphic") {
+  if (graphic.type === 'MarkGraphic') {
     drawMarkGraphic(graphic, onVertex, angle_rad, geometry, feature, context);
   } else {
     //checkUnreachable(fill);
