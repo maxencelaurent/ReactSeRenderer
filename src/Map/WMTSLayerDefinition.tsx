@@ -20,15 +20,12 @@ export default function WMTSLayerDefinition({
   const { registerWMTSLayer, deleteLayer } = React.useContext(MapCtx);
 
   React.useEffect(() => {
-    const load = async () => {
-      registerWMTSLayer({
-        layerId: layerId,
-        getCapabilitiesUrl: getCapabilitiesUrl,
-        wmtsLayerId: wmtsLayerId,
-        timeMatrixSet: tileMatrixSet,
-      });
-    };
-    load();
+    registerWMTSLayer({
+      layerId: layerId,
+      getCapabilitiesUrl: getCapabilitiesUrl,
+      wmtsLayerId: wmtsLayerId,
+      timeMatrixSet: tileMatrixSet,
+    });
     return () => {
       deleteLayer(layerId);
     };

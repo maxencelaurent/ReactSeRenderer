@@ -1,4 +1,4 @@
-import { FeatureCollection } from 'geojson';
+import { Feature, FeatureCollection } from 'geojson';
 import React, {
   JSX,
   ReactNode,
@@ -15,10 +15,14 @@ import createRTree, { RTree } from 'rtree';
 import { applyToEachPoint, getConverter, getProj } from '../geom/transform';
 import WMTSCapabilities from 'ol/format/WMTSCapabilities';
 import { GetCapabilities, TileMatrixSet } from './WmtsUtils';
+import { preloadCache } from '../renderer/wmtsCache';
+
+import extract from '../data/chaumont.json';
 
 export type LayerId = string;
 
 const logger = getLogger('Map');
+logger.setLevel(5);
 
 export interface ILayer {
   layerId: LayerId;
@@ -33,6 +37,8 @@ export interface IWMTSLayer {
   /** WMTS layer identifier */
   wmtsLayerId: string;
   timeMatrixSet?: string;
+  minScale?: string;
+  maxScale?: string;
 }
 
 export interface VectorLayerData {
@@ -40,7 +46,7 @@ export interface VectorLayerData {
   layerId: LayerId;
   provided: ILayer;
   effective: ILayer;
-  rTree: RTree;
+  rTree: RTree<Feature>;
 }
 
 export interface WMTSLayerData {
@@ -63,6 +69,7 @@ export interface MapContext {
   getFeatures: (layerId: LayerId, extent: Extent) => FeatureCollection;
   getWMTSLayer: (layerId: LayerId) => WMTSLayerData | undefined;
   groundUnit: MapUnit;
+  layerIds?: string[];
 }
 
 export const MapCtx = createContext<MapContext>({
@@ -75,6 +82,7 @@ export const MapCtx = createContext<MapContext>({
     features: [],
   }),
   getWMTSLayer: () => undefined,
+  layerIds: [],
 });
 
 export interface MapProps {
@@ -152,10 +160,7 @@ export default function MapDefinition({ crs, children }: MapProps): JSX.Element 
             features: layer.features.features.map((feature) => {
               return {
                 ...feature,
-                geometry: applyToEachPoint(feature.geometry, (point) => {
-                  const p = convertor.forward(point);
-                  return p;
-                }),
+                geometry: applyToEachPoint(feature.geometry, (point) => convertor.forward(point)),
               };
             }),
           };
@@ -220,7 +225,7 @@ export default function MapDefinition({ crs, children }: MapProps): JSX.Element 
       )[0];
 
       if (!tileMatrixSet) {
-        console.log('MatrixSets', getCap.Contents?.TileMatrixSet);
+        logger.info('MatrixSets', getCap.Contents?.TileMatrixSet);
         throw new Error('WMTS Service do not provide tile for the given CRS');
       }
 
@@ -244,7 +249,7 @@ export default function MapDefinition({ crs, children }: MapProps): JSX.Element 
           getTileUrl = getTileUrl.replace('{TileMatrix}', `${tileMatrixId}`);
           getTileUrl = getTileUrl.replace('{TileCol}', `${col}`);
           getTileUrl = getTileUrl.replace('{TileRow}', `${row}`);
-          console.log('GetTile From Template', getTileUrl);
+          // logger.trace('GetTile From Template', getTileUrl);
           return getTileUrl;
         };
       } else {
@@ -279,12 +284,15 @@ export default function MapDefinition({ crs, children }: MapProps): JSX.Element 
 
       setLayers((layers) => {
         const newLayers = { ...layers };
-        newLayers[layerId] = {
+        const newLayer: WMTSLayerData = {
           type: 'WMTSLayer',
           layerId: layerId,
           tileMatrixSet,
           getTileUrl: getTile,
         };
+        newLayers[layerId] = newLayer;
+
+        preloadCache(newLayer, extract, 'm');
         return newLayers;
       });
       return layerId;
@@ -316,7 +324,16 @@ export default function MapDefinition({ crs, children }: MapProps): JSX.Element 
     groundUnit: mapUnit,
     getFeatures: getFeaturesCb,
     getWMTSLayer: getWMTSLayerCb,
+    layerIds: Object.keys(layers),
   });
+
+  // useEffect(() => {
+  //   logger.info('New Layers => context');
+  //   setMapContext((mapContext) => ({
+  //     ...mapContext,
+  //     layerIds: Object.keys(layers),
+  //   }));
+  // }, [layers]);
 
   return <MapCtx.Provider value={mapContext}>{children}</MapCtx.Provider>;
 }

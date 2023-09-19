@@ -9,7 +9,9 @@ import React, {
   useState,
   MouseEvent,
   WheelEvent,
+  useMemo,
 } from 'react';
+import { throttle } from 'lodash';
 import { add, mul, sub } from '../geom/helpers';
 import { getLogger } from '../logger';
 import { Style } from '../model/rule';
@@ -17,13 +19,13 @@ import { getGroundToPixelFactor, getPixelToGroundFactor, toPixel } from '../mode
 import { Extent, render, renderTiles, SeRenderingContext } from '../renderer/renderer';
 import { LayerId, MapCtx } from './MapDefinition';
 import { Label } from '../model/Label';
-import createRTree, { Rectangle } from 'rtree';
+import createRTree, { RTree, Rectangle } from 'rtree';
 import { getAllPoints } from '../renderer/graphicRenderer';
 import { getColor, resolveParameter } from '../model/Parameter';
 import { setStrokeStyke } from '../renderer/strokeRenderer';
 
 const logger = getLogger('MapView');
-logger.setLevel(3);
+logger.setLevel(5);
 
 interface IdlePanState {
   type: 'idle';
@@ -171,14 +173,14 @@ export default function MapView({
       logger.info('No Label Canvas');
       return;
     }
-    const rTree = createRTree();
+    const rTree: RTree<unknown> = createRTree();
     Object.entries(labelsRef.current).forEach(([, features]) => {
       features.forEach(({ geometry, feature, label, renderingContext }) => {
         const points = getAllPoints(geometry, false);
 
         const fontSize =
           toPixel(resolveParameter(label.font?.fontSize || 12, feature), renderingContext) || 1;
-        console.log('FontSize', fontSize);
+        logger.trace('FontSize', fontSize);
         canvas.font = `${fontSize}px`;
 
         if (label.halo) {
@@ -281,20 +283,24 @@ export default function MapView({
     clearLabels: clearLabelsCb,
     drawLabels: drawLabelsCb,
     flatten: () => {
+      logger.error('Flatten');
       const context = canvasElemRef.current?.getContext('2d');
-      clearCanvas(canvasElemRef.current);
+      logger.trace('Clear Main Canvas');
+      clearCanvas(context?.canvas);
       if (context) {
         const sorted = [...layersRef.current].sort((a, b) => {
           return a.index - b.index;
         });
+        logger.trace('Will Flatten', sorted);
         sorted.forEach((layer) => {
           const layerCanvas = canvasRef.current[layer.layerId];
           if (layerCanvas) {
+            logger.info('Draw Layer Canvas', layer.layerId);
             context.drawImage(layerCanvas.canvas, 0, 0);
           }
         });
         if (labelCanvasRef.current) {
-          logger.info('Label Canvas', labelCanvasRef.current);
+          logger.info('Draw Label Canvas', labelCanvasRef.current);
           context.drawImage(labelCanvasRef.current.canvas, 0, 0);
         }
       }
@@ -497,12 +503,20 @@ export default function MapView({
     [updateExtent]
   );
 
-  // MapView Render Effect
-  useEffect(() => {
+  // const layersToRender = layers;
+  // useMemo(() => {
+  //   //return layers.filter((l) => layerIds.includes(l.layerId));
+  //   return layers;
+  // }, [layerIds, layers]);
+
+  // MapView Render Cb
+  const renderCb = useCallback(() => {
     if (canvasRef.current) {
       // clear all canvas
+      logger.trace('Clear label canvas');
       clearCanvas(labelCanvasRef.current?.canvas);
       Object.values(canvasRef.current).forEach((canvas) => {
+        logger.trace('Clear layers canvas');
         clearCanvas(canvas.canvas);
       });
 
@@ -512,6 +526,7 @@ export default function MapView({
         .filter((layer) => layer.visible)
         .sort((a, b) => a.index - b.index)
         .forEach((layer) => {
+          logger.trace('Render Layer', layer.layerId);
           const newContext = { ...renderingContext, layerId: layer.layerId };
           if (layer.type === 'VectorStyledLayer') {
             const data = getFeatures(layer.layerId, renderingContext.groundExtent);
@@ -529,10 +544,27 @@ export default function MapView({
             }
           }
         });
+      logger.trace('Rendering: Draw Labels');
       renderingContext.drawLabels();
+      logger.trace('Rendering: Flatten');
       renderingContext.flatten();
     }
-  }, [layers, renderingContext, groundUnit, getFeatures, getWMTSLayer]);
+  }, [layers, renderingContext, getFeatures, getWMTSLayer]);
+
+  const renderCbRef = useRef(renderCb);
+  renderCbRef.current = renderCb;
+
+  const throttleeCb = useMemo(() => {
+    return throttle(() => {
+      logger.info('Call Render CB');
+      renderCbRef.current();
+    }, 50);
+  }, []);
+
+  useEffect(() => {
+    // throttleeCb();
+    renderCb();
+  }, [renderCb, throttleeCb]);
 
   const onClickCb = useCallback((e: MouseEvent) => {
     if (containerRef.current) {

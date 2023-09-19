@@ -22,7 +22,7 @@ interface Logger {
 export const loggers: Record<string, Logger> = {};
 
 function mapArgs(...args: unknown[]): unknown[] {
-  return args.map(arg => {
+  return args.map((arg) => {
     const argP = typeof arg === 'function' ? arg() : arg;
     try {
       return argP;
@@ -37,7 +37,7 @@ export function getLogger(name: string): Logger {
   const logger = loggers[name];
   const lId = `[${name}] `;
   if (logger == null) {
-    let currentLevel: LoggerLevel = INFO;
+    let currentLevel: LoggerLevel = WARN;
     const logger: Logger = {
       getLevel: () => currentLevel,
       setLevel: (level: LoggerLevel) => (currentLevel = level),

@@ -24,7 +24,7 @@ import {
   Symbolizer,
   TextSymbolizer,
 } from '../model/Symbolizer';
-import { Uom, WithUom, getPixelToGroundFactor, toPixel } from '../model/Uom';
+import { Uom, WithUom, toPixel } from '../model/Uom';
 import { Rule, Style } from '../model/rule';
 import { drawFill } from './fillRenderer';
 import { drawGraphics } from './graphicRenderer';
@@ -34,6 +34,11 @@ import { drawText } from './textRenderer';
 import { TileMatrix } from '../Map/WmtsUtils';
 import { NORTH } from '../model/Graphic';
 import { Label } from '../model/Label';
+import getLogger from '../logger';
+import { computeGroundTileSize, getTile } from './wmtsCache';
+
+const logger = getLogger('Renderer');
+logger.setLevel(2);
 
 // minX. minY, maxY, maxY
 export type Extent = [number, number, number, number];
@@ -270,7 +275,7 @@ export function render(layer: FeatureCollection, style: Style, context: SeRender
 }
 
 export function renderTiles(layer: WMTSLayerData, context: SeRenderingContext, opacity: number) {
-  console.log('RENDER WMTS TILES', layer, context);
+  logger.info('RENDER WMTS TILES', layer, context);
   let tmMin: TileMatrix | undefined = undefined as TileMatrix | undefined;
   let tmMax: TileMatrix | undefined = undefined as TileMatrix | undefined;
   layer.tileMatrixSet.TileMatrix.forEach((tm) => {
@@ -282,37 +287,14 @@ export function renderTiles(layer: WMTSLayerData, context: SeRenderingContext, o
       }
     }
   });
-  console.log('TileMatrix', tmMin, tmMax);
+
   const selectedTm = tmMin || tmMax;
   if (!selectedTm) {
     return;
   }
-  console.log('Top Left', selectedTm.TopLeftCorner);
-  console.log('Matrix', selectedTm.MatrixWidth, selectedTm.MatrixHeight);
-  console.log('Tile', selectedTm.TileWidth, selectedTm.TileHeight);
 
-  // WMTS spec 1px = 0.28mm; 0.28 mm => dpi= 25.4/ 0.28 inch
-  const factor = getPixelToGroundFactor({
-    dpi: 25.4 / 0.28, // context.dpi,
-    groundUnit: context.groundUnit,
-    scaleDenom: selectedTm.ScaleDenominator,
-  });
+  const [groundTileWidth, groundTileHeight] = computeGroundTileSize(selectedTm, context.groundUnit);
 
-  const groundTileHeight = selectedTm.TileHeight * factor;
-  const groundTileWidth = selectedTm.TileWidth * factor;
-
-  console.log(
-    'Extent: ',
-    context.groundExtent[0],
-    '\t',
-    context.groundExtent[1],
-    '\t',
-    context.groundExtent[2],
-    '\t',
-    context.groundExtent[3],
-    '\t'
-  );
-  console.log('TileGround Size', groundTileWidth, groundTileHeight, context.groundUnit);
   const leftTileIndex = Math.max(
     0,
     Math.floor((context.groundExtent[0] - selectedTm.TopLeftCorner[0]) / groundTileWidth)
@@ -338,15 +320,17 @@ export function renderTiles(layer: WMTSLayerData, context: SeRenderingContext, o
   const canvas = context.getCanvas(layer.layerId);
 
   if (canvas) {
-    const tiles: Promise<boolean>[] = [];
+    const tiles: Promise<{
+      img: HTMLImageElement;
+      payload: Position;
+    }>[] = [];
     canvas.globalAlpha = opacity;
 
-    console.log('Tiles', leftTileIndex, topTileIndex, rightTileIndex, bottomTileIndex);
+    logger.info('Tiles', leftTileIndex, topTileIndex, rightTileIndex, bottomTileIndex);
     if (leftTileIndex <= rightTileIndex && topTileIndex <= bottomTileIndex) {
       for (let x = leftTileIndex; x <= rightTileIndex; x++) {
         for (let y = topTileIndex; y <= bottomTileIndex; y++) {
           const url = layer.getTileUrl(selectedTm.Identifier, x, y);
-          const img = document.createElement('img');
           const gridPx = tileToPixel(
             selectedTm,
             [groundTileWidth, groundTileHeight],
@@ -355,23 +339,26 @@ export function renderTiles(layer: WMTSLayerData, context: SeRenderingContext, o
             context
           );
 
-          const p = new Promise<boolean>((resolve) => {
-            img.onload = () => {
-              canvas.drawImage(img, gridPx[0], gridPx[1], tileWidthPx, tileHeightPx);
-              resolve(true);
-            };
-            img.src = url;
-          });
-
-          tiles.push(p);
-          console.log('tile ', url);
-          console.log('Position', gridPx);
+          const tile = getTile(layer.layerId, url, gridPx);
+          if (tile instanceof Promise) {
+            tiles.push(tile);
+          } else if (tile) {
+            canvas.clearRect(gridPx[0], gridPx[1], tileWidthPx, tileHeightPx);
+            canvas.drawImage(tile, gridPx[0], gridPx[1], tileWidthPx, tileHeightPx);
+          }
         }
       }
     } else {
       console.error('Tiles range is invalid');
     }
-    Promise.all(tiles).then(() => {
+    Promise.all(tiles).then((rtiles) => {
+      rtiles.forEach((t) => {
+        const gridPx = t.payload;
+        canvas.clearRect(gridPx[0], gridPx[1], tileWidthPx, tileHeightPx);
+        canvas.drawImage(t.img, gridPx[0], gridPx[1], tileWidthPx, tileHeightPx);
+      });
+
+      logger.warn('All WMTS Tiles Rendered');
       context.flatten();
       canvas.globalAlpha = 1;
     });
@@ -389,7 +376,6 @@ function tileToPixel(
     matrix.TopLeftCorner[0] + row * groundTileSize[0],
     matrix.TopLeftCorner[1] - col * groundTileSize[1],
   ];
-  console.log('');
 
   const factor = context.groundToPixelFactor;
   const translate: Position = [-context.groundExtent[0], -context.groundExtent[1]];

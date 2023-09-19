@@ -21,6 +21,7 @@ import { Style } from './model/rule';
 
 import buildings from './data/buildings';
 import roads from './data/roads';
+import chaumont from './data/chaumont.json';
 import paths from './data/path';
 import WMTSLayerDefinition from './Map/WMTSLayerDefinition';
 import WMTSLayer from './Map/WMTSLayer';
@@ -29,7 +30,7 @@ interface MyProperties {
   label: string;
 }
 
-function point<P = GeoJsonProperties>(coords: Position, properties: P): Feature<Point, P> {
+export function point<P = GeoJsonProperties>(coords: Position, properties: P): Feature<Point, P> {
   return {
     type: 'Feature',
     properties: properties,
@@ -40,7 +41,7 @@ function point<P = GeoJsonProperties>(coords: Position, properties: P): Feature<
   };
 }
 
-function multiPoint<P = GeoJsonProperties>(
+export function multiPoint<P = GeoJsonProperties>(
   coords: Position[],
   properties: P
 ): Feature<MultiPoint, P> {
@@ -54,7 +55,10 @@ function multiPoint<P = GeoJsonProperties>(
   };
 }
 
-function line<P = GeoJsonProperties>(coords: Position[], properties: P): Feature<LineString, P> {
+export function line<P = GeoJsonProperties>(
+  coords: Position[],
+  properties: P
+): Feature<LineString, P> {
   return {
     type: 'Feature',
     properties: properties,
@@ -65,7 +69,7 @@ function line<P = GeoJsonProperties>(coords: Position[], properties: P): Feature
   };
 }
 
-function multiLine<P = GeoJsonProperties>(
+export function multiLine<P = GeoJsonProperties>(
   coords: Position[][],
   properties: P
 ): Feature<MultiLineString, P> {
@@ -79,7 +83,10 @@ function multiLine<P = GeoJsonProperties>(
   };
 }
 
-function polygon<P = GeoJsonProperties>(coords: Position[][], properties: P): Feature<Polygon, P> {
+export function polygon<P = GeoJsonProperties>(
+  coords: Position[][],
+  properties: P
+): Feature<Polygon, P> {
   return {
     type: 'Feature',
     properties: properties,
@@ -90,7 +97,7 @@ function polygon<P = GeoJsonProperties>(coords: Position[][], properties: P): Fe
   };
 }
 
-function multiPolygon<P = GeoJsonProperties>(
+export function multiPolygon<P = GeoJsonProperties>(
   coords: Position[][][],
   properties: P
 ): Feature<MultiPolygon, P> {
@@ -104,7 +111,7 @@ function multiPolygon<P = GeoJsonProperties>(
   };
 }
 
-const multiPolygons: FeatureCollection<MultiPolygon, MyProperties> = {
+export const multiPolygons: FeatureCollection<MultiPolygon, MyProperties> = {
   type: 'FeatureCollection',
   features: [
     multiPolygon(
@@ -133,7 +140,7 @@ const multiPolygons: FeatureCollection<MultiPolygon, MyProperties> = {
   ],
 };
 
-const polygons: FeatureCollection<Polygon, MyProperties> = {
+export const polygons: FeatureCollection<Polygon, MyProperties> = {
   type: 'FeatureCollection',
   features: [
     polygon(
@@ -170,7 +177,7 @@ const polygons: FeatureCollection<Polygon, MyProperties> = {
   ],
 };
 
-const multiLines: FeatureCollection<MultiLineString, MyProperties> = {
+export const multiLines: FeatureCollection<MultiLineString, MyProperties> = {
   type: 'FeatureCollection',
   features: [
     //    multiLine([[
@@ -196,7 +203,7 @@ const multiLines: FeatureCollection<MultiLineString, MyProperties> = {
   ],
 };
 
-const lines: FeatureCollection<LineString, MyProperties> = {
+export const lines: FeatureCollection<LineString, MyProperties> = {
   type: 'FeatureCollection',
   features: [
     line(
@@ -223,7 +230,7 @@ const lines: FeatureCollection<LineString, MyProperties> = {
   ],
 };
 
-const points: FeatureCollection<Point, MyProperties> = {
+export const points: FeatureCollection<Point, MyProperties> = {
   type: 'FeatureCollection',
   features: [
     {
@@ -245,7 +252,7 @@ const points: FeatureCollection<Point, MyProperties> = {
   ],
 };
 
-const polygonStyle: Style = {
+export const polygonStyle: Style = {
   type: 'Style',
   rules: [
     {
@@ -373,7 +380,7 @@ const polygonStyle: Style = {
   ],
 };
 
-const linesStyle = (color: string): Style => ({
+export const linesStyle = (color: string): Style => ({
   type: 'Style',
   rules: [
     {
@@ -568,7 +575,7 @@ const roadStyle: Style = {
   ],
 };
 
-const pointsStyle: Style = {
+export const pointsStyle: Style = {
   type: 'Style',
   rules: [
     {
@@ -700,7 +707,7 @@ const pathsStyle: Style = {
 // groundExtent: [2537588.801739664, 1180237.8388105312, 2540143.552681168, 1182292.067127078],
 const swissTopo = 'https://wmts.geo.admin.ch/EPSG/2056/1.0.0/WMTSCapabilities.xml';
 
-// const sitnGetCap = 'https://sitn.ne.ch/services/wmts?SERVICE=WMTS&REQUEST=GetCapabilities';
+const sitn = 'https://sitn.ne.ch/services/wmts?SERVICE=WMTS&REQUEST=GetCapabilities';
 
 export default function App() {
   const [toggle, setToggle] = React.useState(0);
@@ -717,24 +724,35 @@ export default function App() {
           dataCrs="EPSG:4326"
         />
         <LayerDefinition
+          features={chaumont as FeatureCollection}
+          layerId="Chaumont"
+          dataCrs="EPSG:2056"
+        />
+        <LayerDefinition
           features={roads as FeatureCollection}
           layerId="Roads"
           dataCrs="EPSG:4326"
         />
-        <WMTSLayerDefinition
+        <LayerDefinition features={paths} layerId="Paths" dataCrs="EPSG:4326" />
+        {/*<WMTSLayerDefinition
           layerId="baseLayer1"
           getCapabilitiesUrl={swissTopo}
           wmtsLayerId="ch.swisstopo.pixelkarte-farbe"
+  />*/}
+        <WMTSLayerDefinition
+          layerId="baseLayer2"
+          getCapabilitiesUrl={sitn}
+          wmtsLayerId="ortho2023"
         />
-        <LayerDefinition features={paths} layerId="Paths" dataCrs="EPSG:4326" />
-
+        *
         <MapView center={[2539092, 1181133]} scaleDenom={5000} className="MyMapView">
-          <WMTSLayer visible={true} index={0} layerId="baseLayer1" opacity={0.3} />
-          <StyledLayer index={1} layerId="Roads" style={roadStyle} />
+          {/*<WMTSLayer visible={false} index={0} layerId="baseLayer1" opacity={0.3} />*/}
+          <WMTSLayer visible={true} index={2} layerId="baseLayer2" opacity={0.3} />
+          <StyledLayer index={3} layerId="Roads" style={roadStyle} />
           <StyledLayer index={5} layerId="Buildings" style={buildingStyle} />
+          <StyledLayer index={5} layerId="Chaumont" style={buildingStyle} />
           <StyledLayer index={10} layerId="Paths" style={pathsStyle} />
         </MapView>
-
         <MapView noZoom noPan center={[2539092, 1181133]} scaleDenom={25000} className="MiniMap">
           <WMTSLayer visible={true} index={0} layerId="baseLayer1" opacity={0.3} />
           <StyledLayer index={10} layerId="Roads" style={roadStyle} />
